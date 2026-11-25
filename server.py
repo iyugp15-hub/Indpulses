@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import csv
@@ -125,7 +125,7 @@ def serve_home():
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
 
 @app.get("/api/all-funds")
-def get_all_funds(q: str = Query(default=""), limit: int = Query(default=60, le=200)):
+def get_all_funds(q: str = Query(default=""), limit: int = Query(default=500, le=5000)):
     if _CACHE["all_funds"] is None:
         raw = http_get_json("https://api.mfapi.in/mf", timeout=20)
         cleaned = []
@@ -164,7 +164,7 @@ def get_fund_detail(scheme_code: int):
     }
 
 @app.get("/api/all-equities")
-def get_all_equities(q: str = Query(default=""), limit: int = Query(default=60, le=200)):
+def get_all_equities(q: str = Query(default=""), limit: int = Query(default=500, le=5000)):
     if _CACHE["all_equities"] is None:
         csv_text = http_get_text("https://images.dhan.co/api-data/api-scrip-master.csv", timeout=25)
         reader = csv.DictReader(io.StringIO(csv_text))
