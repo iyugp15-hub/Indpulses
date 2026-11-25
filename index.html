@@ -2125,8 +2125,31 @@
                   </div>
                 </div>
               ` : ''}
+              ${f.schemeCode ? `<div id="liveFundNavBox" class="card-elevated p-3 text-[11px] text-zinc-400">Loading live AMFI NAV &amp; 30-day history...</div>` : ''}
             `
           );
+          if (f.schemeCode) {
+            fetch(`/api/fund/${f.schemeCode}`)
+              .then(r => r.ok ? r.json() : null)
+              .then(d => {
+                const box = document.getElementById('liveFundNavBox');
+                if (!box || !d) return;
+                f.nav = d.nav || f.nav;
+                f.amc = d.amc || f.amc;
+                const rows = (d.history || []).slice(0, 10).map(h => `
+                  <div class="flex justify-between py-1 border-b border-zinc-800/60">
+                    <span class="font-mono text-zinc-400">${h.date}</span>
+                    <span class="text-white font-semibold">₹${h.nav}</span>
+                  </div>
+                `).join('');
+                box.innerHTML = `
+                  <div class="text-white font-semibold mb-1.5">${d.amc} · Live NAV ₹${d.nav} (${d.category})</div>
+                  <div class="text-zinc-400 mb-1">Recent Historical NAVs</div>
+                  ${rows}
+                `;
+              })
+              .catch(() => {});
+          }
         }
         return;
       }
@@ -2457,7 +2480,7 @@
               schemeCode: item.schemeCode,
               name: item.name,
               amc: 'AMFI Live Directory',
-              category: 'Flexi Cap',
+              category: item.category || 'Flexi Cap',
               nav: 0,
               aumCr: 0,
               isin: `AMFI-${item.schemeCode}`,
