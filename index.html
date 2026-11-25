@@ -239,6 +239,7 @@
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <input id="hotSearch" type="text" placeholder="Search ticker or ISIN..." class="w-44 rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-[#0a84ff] focus:outline-none" />
+            <button type="button" id="loadAllEquitiesBtn" class="rounded-xl bg-[#0a84ff] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 transition">Load All NSE Stocks</button>
             <select id="hotCapFilter" class="rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white focus:border-[#0a84ff] focus:outline-none">
               <option value="All">All Caps</option>
               <option value="Large">Large Cap</option>
@@ -306,10 +307,11 @@
       <div class="card-surface p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="text-base font-semibold text-white">Indian Mutual Funds</h2>
-          <p class="text-xs text-zinc-400">Click any fund to inspect all underlying stock holdings &amp; historical activity</p>
+          <p class="text-xs text-zinc-400">Click any fund for holdings &amp; historical NAVs, or search all 16,000+ AMFI schemes via live server</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <input id="fundSearch" type="text" placeholder="Search fund or AMC..." class="w-44 rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-[#0a84ff] focus:outline-none" />
+          <button type="button" id="loadAllFundsBtn" class="rounded-xl bg-[#0a84ff] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 transition">Load All India Funds</button>
           <select id="fundCategoryFilter" class="rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white focus:border-[#0a84ff] focus:outline-none">
             <option value="All">All Categories</option>
             <option value="Flexi Cap">Flexi Cap</option>
@@ -2226,6 +2228,86 @@
 
     document.getElementById('syncLiveBtn').addEventListener('click', () => syncFromServer(false));
 
+    async function loadAllIndiaFunds(query = '', silent = false) {
+      try {
+        const res = await fetch(`/api/all-funds?q=${encodeURIComponent(query)}&limit=400`);
+        if (!res.ok) throw new Error('Server unavailable');
+        const data = await res.json();
+        (data.funds || []).forEach(item => {
+          const exists = state.funds.some(f => f.schemeCode === item.schemeCode || f.name === item.name);
+          if (!exists) {
+            state.funds.push({
+              id: 'MF_' + item.schemeCode,
+              schemeCode: item.schemeCode,
+              name: item.name,
+              amc: 'AMFI Live Directory',
+              category: 'Flexi Cap',
+              nav: 0,
+              aumCr: 0,
+              isin: `AMFI-${item.schemeCode}`,
+              ret1Y: 0,
+              holdings: []
+            });
+          }
+        });
+        renderFunds();
+        if (!silent) showToast(`Loaded ${data.matched} matching funds (out of ${data.total.toLocaleString('en-IN')} AMFI schemes)`);
+      } catch (e) {
+        if (!silent) showToast('Connect to your live Render URL to browse all 16,000+ AMFI funds');
+      }
+    }
+
+    async function loadAllNseEquities(query = '', silent = false) {
+      try {
+        const res = await fetch(`/api/all-equities?q=${encodeURIComponent(query)}&limit=2500`);
+        if (!res.ok) throw new Error('Server unavailable');
+        const data = await res.json();
+        (data.equities || []).forEach(eq => {
+          if (!state.stocks.some(s => s.ticker === eq.ticker)) {
+            state.stocks.push({
+              id: eq.ticker,
+              ticker: eq.ticker,
+              isin: eq.securityId ? `DHAN-${eq.securityId}` : 'NSE_EQ',
+              company: eq.company,
+              sector: eq.isEtf ? 'ETF' : 'NSE Equity',
+              cap: 'Large',
+              ltp: 0,
+              netFlowCr: 0,
+              flowWeekCr: 0,
+              flowYearCr: 0,
+              fundsHolding: 1,
+              newEntrants: 0,
+              avgWeight: 0,
+              note: `NSE Listed Equity (Security ID: ${eq.securityId})`,
+              holdingFunds: ['NSE Scrip Master'],
+              verified: true
+            });
+          }
+        });
+        renderAll();
+        if (!silent) showToast(`Loaded ${data.matched} NSE stocks (out of ${data.total.toLocaleString('en-IN')} listed)`);
+      } catch (e) {
+        if (!silent) showToast('Connect to your live Render URL to load all NSE equities');
+      }
+    }
+
+    // Live search across all 16,000+ AMFI funds when typing
+    let _mfSearchTimer = null;
+    document.getElementById('fundSearch').addEventListener('input', () => {
+      clearTimeout(_mfSearchTimer);
+      const q = document.getElementById('fundSearch').value.trim();
+      if (q.length >= 2) {
+        _mfSearchTimer = setTimeout(() => loadAllIndiaFunds(q, true), 350);
+      }
+    });
+
+    document.getElementById('loadAllFundsBtn').addEventListener('click', () => {
+      loadAllIndiaFunds(document.getElementById('fundSearch').value.trim());
+    });
+    document.getElementById('loadAllEquitiesBtn').addEventListener('click', () => {
+      loadAllNseEquities(document.getElementById('hotSearch').value.trim());
+    });
+
     // Universal Bulk Import (JSON, Custom CSV, or Dhan Scrip Master CSV)
     function processBulkText(raw) {
       const text = (raw || '').trim();
@@ -2547,6 +2629,8 @@
     window.addEventListener('DOMContentLoaded', () => {
       renderAll();
       syncFromServer(true);
+      loadAllNseEquities('', true);
+      loadAllIndiaFunds('', true);
     });
   </script>
 </body>
