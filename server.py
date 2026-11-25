@@ -1,11 +1,13 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+import csv
+import io
 import json
 import os
 import urllib.request
 import urllib.parse
-import urllib.error
 
 app = FastAPI(title="IndiaPulse Live Market Website")
 app.add_middleware(
@@ -14,6 +16,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_CACHE = {
+    "all_funds": None,
+    "all_equities": None,
+}
 
 MARKET_SECURITIES = {
     "1333": "HDFCBANK",
@@ -49,28 +56,32 @@ MARKET_SECURITIES = {
     "2815": "LIQUIDBEES",
 }
 
-MF_SEARCH_QUERIES = {
-    "PPFAS_FC": "Parag Parikh Flexi Cap Fund Direct Growth",
-    "HDFC_MID": "HDFC Mid-Cap Opportunities Fund Direct Growth",
-    "ICICI_MAA": "ICICI Prudential Multi-Asset Fund Direct Growth",
-    "HDFC_FC": "HDFC Flexi Cap Fund Direct Growth",
-    "ICICI_BC": "ICICI Prudential Bluechip Fund Direct Growth",
-    "NIPPON_SC": "Nippon India Small Cap Fund Direct Growth",
-    "SBI_CONTRA": "SBI Contra Fund Direct Growth",
-    "SBI_LC": "SBI Bluechip Fund Direct Growth",
-    "SBI_MAA": "SBI Multi Asset Allocation Fund Direct Growth",
-    "NIPPON_MAA": "Nippon India Multi Asset Allocation Fund Direct Growth",
-    "KOTAK_MAA": "Kotak Multi Asset Allocation Fund Direct Growth",
-    "QUANT_MAA": "Quant Multi Asset Allocation Fund Direct Growth",
+# Direct AMFI scheme codes (no slow search step needed)
+FLAGSHIP_MF_CODES = {
+    "PPFAS_FC": 122639,
+    "HDFC_MID": 118989,
+    "ICICI_MAA": 120334,
+    "HDFC_FC": 118955,
+    "ICICI_BC": 120586,
+    "NIPPON_SC": 118778,
+    "SBI_CONTRA": 119835,
+    "SBI_LC": 119598,
+    "SBI_MAA": 119718,
+    "NIPPON_MAA": 148381,
+    "KOTAK_MAA": 152069,
+    "QUANT_MAA": 120821,
 }
 
-def http_get_json(url: str, headers: dict | None = None):
+def http_get_text(url: str, headers: dict | None = None, timeout: int = 8) -> str:
     req = urllib.request.Request(
         url,
-        headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0", **(headers or {})},
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", **(headers or {})},
     )
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+def http_get_json(url: str, headers: dict | None = None, timeout: int = 8):
+    return json.loads(http_get_text(url, headers={"Accept": "application/json", **(headers or {})}, timeout=timeout))
 
 def post_dhan_ltp(client_id: str, access_token: str, sec_ids: list[int]):
     body = json.dumps({"NSE_EQ": sec_ids}).encode("utf-8")
@@ -86,12 +97,98 @@ def post_dhan_ltp(client_id: str, access_token: str, sec_ids: list[int]):
             "User-Agent": "IndiaPulse/1.0",
         },
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=8) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+def fetch_yahoo_ltp(ticker: str):
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(ticker)}.NS?range=1d&interval=1d"
+        data = http_get_json(url, timeout=5)
+        meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
+        price = meta.get("regularMarketPrice")
+        return ticker, round(float(price), 2) if price else None
+    except Exception:
+        return ticker, None
+
+def fetch_mf_nav(fund_id: str, code: int):
+    try:
+        latest = http_get_json(f"https://api.mfapi.in/mf/{code}/latest", timeout=5)
+        nav_list = latest.get("data", []) if isinstance(latest, dict) else []
+        if nav_list and nav_list[0].get("nav"):
+            return fund_id, {"nav": round(float(nav_list[0]["nav"]), 2), "date": nav_list[0].get("date", "")}
+    except Exception:
+        pass
+    return fund_id, None
 
 @app.get("/")
 def serve_home():
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
+
+@app.get("/api/all-funds")
+def get_all_funds(q: str = Query(default=""), limit: int = Query(default=60, le=200)):
+    if _CACHE["all_funds"] is None:
+        raw = http_get_json("https://api.mfapi.in/mf", timeout=20)
+        cleaned = []
+        seen = set()
+        for item in raw if isinstance(raw, list) else []:
+            name = (item.get("schemeName") or "").strip()
+            code = item.get("schemeCode")
+            if not name or not code:
+                continue
+            display = name.replace(" - Direct Plan", "").replace(" Direct Plan", "").replace(" Direct", "").replace("(Direct)", "").strip()
+            if display in seen:
+                continue
+            seen.add(display)
+            cleaned.append({"schemeCode": code, "name": display})
+        _CACHE["all_funds"] = cleaned
+
+    ql = q.strip().lower()
+    items = _CACHE["all_funds"]
+    if ql:
+        items = [f for f in items if ql in f["name"].lower() or ql == str(f["schemeCode"])]
+    return {"total": len(_CACHE["all_funds"]), "matched": len(items), "funds": items[:limit]}
+
+@app.get("/api/fund/{scheme_code}")
+def get_fund_detail(scheme_code: int):
+    data = http_get_json(f"https://api.mfapi.in/mf/{scheme_code}", timeout=10)
+    meta = data.get("meta", {}) if isinstance(data, dict) else {}
+    nav_history = data.get("data", []) if isinstance(data, dict) else []
+    latest_nav = float(nav_history[0]["nav"]) if nav_history else 0.0
+    return {
+        "schemeCode": scheme_code,
+        "schemeName": (meta.get("scheme_name") or "").replace(" Direct", "").strip(),
+        "amc": meta.get("fund_house", "AMFI Registered"),
+        "category": meta.get("scheme_category", "Mutual Fund"),
+        "nav": round(latest_nav, 2),
+        "history": nav_history[:30],
+    }
+
+@app.get("/api/all-equities")
+def get_all_equities(q: str = Query(default=""), limit: int = Query(default=60, le=200)):
+    if _CACHE["all_equities"] is None:
+        csv_text = http_get_text("https://images.dhan.co/api-data/api-scrip-master.csv", timeout=25)
+        reader = csv.DictReader(io.StringIO(csv_text))
+        equities = []
+        seen = set()
+        for row in reader:
+            exch = (row.get("SEM_EXM_EXCH_ID") or "").strip().upper()
+            series = (row.get("SEM_SERIES") or "").strip().upper()
+            sym = (row.get("SEM_TRADING_SYMBOL") or "").strip().upper()
+            if exch == "NSE" and series in ("EQ", "BE") and sym and sym not in seen:
+                seen.add(sym)
+                equities.append({
+                    "ticker": sym,
+                    "company": (row.get("SEM_CUSTOM_SYMBOL") or sym).strip(),
+                    "securityId": (row.get("SEM_SMST_SECURITY_ID") or "").strip(),
+                    "isEtf": "BEES" in sym or "ETF" in sym,
+                })
+        _CACHE["all_equities"] = equities
+
+    ql = q.strip().lower()
+    items = _CACHE["all_equities"]
+    if ql:
+        items = [e for e in items if ql in e["ticker"].lower() or ql in e["company"].lower()]
+    return {"total": len(_CACHE["all_equities"]), "matched": len(items), "equities": items[:limit]}
 
 @app.get("/api/live-sync")
 def live_sync(
@@ -102,9 +199,10 @@ def live_sync(
     tok = (access_token or os.environ.get("DHAN_ACCESS_TOKEN", "")).strip()
 
     quotes = {}
-    source = "Yahoo NSE + MFapi"
+    dhan_error = None
+    source = "Live NSE + MFapi"
 
-    # 1. Try DhanHQ Market Quote LTP first if keys are configured in Render
+    # 1. Try DhanHQ Market Quote LTP in 1 batch call
     if cid and tok:
         try:
             sec_ids = [int(k) for k in MARKET_SECURITIES.keys()]
@@ -116,45 +214,30 @@ def live_sync(
                     quotes[ticker] = info["last_price"]
             if quotes:
                 source = "DhanHQ Live + MFapi"
-        except Exception:
-            pass
+        except Exception as exc:
+            dhan_error = str(exc)
 
-    # 2. Fallback to live NSE quotes via Yahoo Finance for any missing tickers
-    for ticker in MARKET_SECURITIES.values():
-        if ticker in quotes:
-            continue
-        try:
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(ticker)}.NS?range=1d&interval=1d"
-            data = http_get_json(url)
-            meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
-            price = meta.get("regularMarketPrice")
-            if price:
-                quotes[ticker] = round(float(price), 2)
-        except Exception:
-            continue
-
-    # 3. Fetch real live Mutual Fund NAVs from MFapi.in (free AMFI data)
+    # 2. Fetch missing NSE quotes + MFapi NAVs in parallel (~2s total, avoids Render 30s timeout)
+    missing_tickers = [t for t in MARKET_SECURITIES.values() if t not in quotes]
     fund_navs = {}
-    for fund_id, query in MF_SEARCH_QUERIES.items():
-        try:
-            search_res = http_get_json(
-                f"https://api.mfapi.in/mf/search?q={urllib.parse.quote(query)}"
-            )
-            if isinstance(search_res, list) and search_res:
-                code = search_res[0].get("schemeCode")
-                if code:
-                    latest = http_get_json(f"https://api.mfapi.in/mf/{code}/latest")
-                    nav_list = latest.get("data", []) if isinstance(latest, dict) else []
-                    if nav_list and nav_list[0].get("nav"):
-                        fund_navs[fund_id] = {
-                            "nav": round(float(nav_list[0]["nav"]), 2),
-                            "date": nav_list[0].get("date", ""),
-                        }
-        except Exception:
-            continue
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        quote_futures = [pool.submit(fetch_yahoo_ltp, t) for t in missing_tickers]
+        mf_futures = [pool.submit(fetch_mf_nav, fid, code) for fid, code in FLAGSHIP_MF_CODES.items()]
+
+        for fut in as_completed(quote_futures):
+            ticker, price = fut.result()
+            if price:
+                quotes[ticker] = price
+
+        for fut in as_completed(mf_futures):
+            fid, info = fut.result()
+            if info:
+                fund_navs[fid] = info
 
     return {
         "source": source,
+        "dhan_error": dhan_error,
         "quotes": quotes,
         "fundNavs": fund_navs,
     }
