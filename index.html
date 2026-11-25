@@ -475,15 +475,18 @@
     <section id="tab-today" class="tab-panel hidden space-y-4">
       <div class="card-surface p-4 sm:p-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 class="text-base font-semibold text-white">Today's Institutional Market Analysis</h2>
-          <p class="text-xs text-zinc-400">Present-day summary of institutional buying, selling, new fund entries, and ETF inflows/outflows</p>
+          <h2 class="text-base font-semibold text-white">Today's Analysis (Present Day Only)</h2>
+          <p class="text-xs text-zinc-400">Strictly today's intraday entries, order-book buy/sell depth, and present-day activity—no prior-day data</p>
         </div>
-        <span id="todayDateBadge" class="rounded-full bg-zinc-900 border border-zinc-800 px-3 py-1 text-xs font-mono text-zinc-300">2026-11-25</span>
+        <div class="flex items-center gap-2">
+          <span id="todayDateBadge" class="rounded-full bg-zinc-900 border border-zinc-800 px-3 py-1 text-xs font-mono text-zinc-300"></span>
+          <button type="button" id="refreshTodayBtn" class="rounded-xl bg-[#0a84ff] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 transition">Scan Today</button>
+        </div>
       </div>
       <div id="todaySummaryGrid" class="grid grid-cols-1 gap-3 md:grid-cols-2"></div>
       <div class="card-surface p-4 sm:p-5 space-y-3">
-        <h3 class="text-sm font-semibold text-white">Today's ETF Investment Bias (Rose vs. Fell)</h3>
-        <div id="todayEtfBias" class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3"></div>
+        <h3 class="text-sm font-semibold text-white">Today's Intraday Order-Book &amp; Flow Entries</h3>
+        <div id="todayEtfBias" class="space-y-2 text-xs text-zinc-400"></div>
       </div>
     </section>
 
@@ -1866,53 +1869,75 @@
       }).join('');
     }
 
-    function renderTodayAnalysis() {
+    function getIstTodayStr() {
+      const now = new Date();
+      const ist = new Date(now.getTime() + (330 + now.getTimezoneOffset()) * 60000);
+      return ist.toISOString().slice(0, 10);
+    }
+
+    function renderTodayAnalysis(liveToday = null) {
+      const todayStr = (liveToday && liveToday.date) || getIstTodayStr();
+      const badge = document.getElementById('todayDateBadge');
+      if (badge) badge.textContent = todayStr;
+
       const grid = document.getElementById('todaySummaryGrid');
-      const etfBox = document.getElementById('todayEtfBias');
-      if (!grid || !etfBox) return;
+      const box = document.getElementById('todayEtfBias');
+      if (!grid || !box) return;
 
-      const topBuys = [...state.stocks].filter(s => (s.netFlowCr || 0) > 0).sort((a, b) => b.netFlowCr - a.netFlowCr).slice(0, 5);
-      const topSells = [...state.stocks].filter(s => (s.netFlowCr || 0) < 0).sort((a, b) => a.netFlowCr - b.netFlowCr).slice(0, 5);
-      const newEntries = [...state.stocks].filter(s => (s.newEntrants || 0) > 0).sort((a, b) => b.newEntrants - a.newEntrants).slice(0, 5);
-      const topOverlap = [...state.stocks].sort((a, b) => b.fundsHolding - a.fundsHolding).slice(0, 5);
+      // Filter history strictly to today's date only
+      const todayHist = state.history.filter(h => h.date === todayStr);
+      const liveEntries = (liveToday && Array.isArray(liveToday.entries)) ? liveToday.entries : [];
 
-      const renderMiniList = (title, accent, rows, valFn) => `
+      const buysToday = liveEntries.filter(e => e.dayChangePct >= 0 || e.buyQty > e.sellQty);
+      const sellsToday = liveEntries.filter(e => e.dayChangePct < 0 || e.sellQty > e.buyQty);
+
+      const renderLiveCard = (title, accent, items) => `
         <div class="card-surface p-4 space-y-3">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-semibold text-white">${title}</h3>
-            <span class="text-[11px] font-semibold ${accent}">Today</span>
+            <span class="text-[11px] font-mono ${accent}">${todayStr}</span>
           </div>
-          <div class="space-y-2">
-            ${rows.map(s => `
-              <button type="button" data-stock-id="${s.id}" class="stock-detail-trigger w-full card-elevated px-3 py-2 flex items-center justify-between text-left hover:border-zinc-600 transition">
-                <div>
-                  <div class="text-xs font-semibold text-white">${s.ticker}</div>
-                  <div class="text-[11px] text-zinc-400">${s.company} · ${s.sector}</div>
-                </div>
-                <div class="text-xs font-semibold tabular-nums ${accent}">${valFn(s)}</div>
-              </button>
-            `).join('')}
-          </div>
+          ${items.length ? `<div class="space-y-2">${items.map(e => `
+            <button type="button" data-stock-id="${e.ticker}" class="stock-detail-trigger w-full card-elevated px-3 py-2 flex items-center justify-between text-left hover:border-zinc-600 transition">
+              <div>
+                <div class="text-xs font-semibold text-white">${e.ticker} <span class="text-[10px] text-zinc-400 ml-1">${e.bias}</span></div>
+                <div class="text-[11px] text-zinc-400">${e.detail}</div>
+              </div>
+              <div class="text-right tabular-nums">
+                <div class="text-xs font-semibold text-white">₹${e.ltp.toLocaleString('en-IN')}</div>
+                <div class="text-[11px] ${e.dayChangePct >= 0 ? 'text-[#30d158]' : 'text-[#ff453a]'}">${e.dayChangePct >= 0 ? '+' : ''}${e.dayChangePct}%</div>
+              </div>
+            </button>
+          `).join('')}</div>` : `<div class="text-xs text-zinc-400">Tap <strong>Scan Today</strong> on your live Render site to pull today's intraday order-book &amp; volume entries.</div>`}
         </div>
       `;
 
       grid.innerHTML =
-        renderMiniList('Top Institutional Buying', 'text-[#30d158]', topBuys, s => `+₹${s.netFlowCr.toLocaleString('en-IN')} Cr`) +
-        renderMiniList('Top Institutional Selling / Trimming', 'text-[#ff453a]', topSells, s => `₹${s.netFlowCr.toLocaleString('en-IN')} Cr`) +
-        renderMiniList('Institutions Entering (New Fund Additions)', 'text-[#ff9f0a]', newEntries, s => `+${s.newEntrants} new funds`) +
-        renderMiniList('Highest Institutional Consensus', 'text-[#0a84ff]', topOverlap, s => `${s.fundsHolding} funds`);
+        renderLiveCard("Today's Intraday Buying / Accumulation", 'text-[#30d158]', buysToday) +
+        renderLiveCard("Today's Intraday Selling / Pressure", 'text-[#ff453a]', sellsToday);
 
-      etfBox.innerHTML = state.etfs.map(e => `
-        <button type="button" data-etf-id="${e.id}" class="etf-detail-trigger card-elevated p-3 text-left hover:border-zinc-600 transition flex items-center justify-between">
-          <div>
-            <div class="text-xs font-semibold text-white">${e.ticker}</div>
-            <div class="text-[11px] text-zinc-400">₹${e.price.toLocaleString('en-IN')}</div>
+      if (todayHist.length) {
+        box.innerHTML = todayHist.map(h => `
+          <div class="card-elevated px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span class="font-semibold text-white">${h.fundName}</span>
+              <span class="text-zinc-400 ml-2">${h.closingPosition}</span>
+            </div>
+            <span class="font-semibold ${h.actionType === 'Bought' ? 'text-[#30d158]' : 'text-[#ff453a]'}">${h.activity}</span>
           </div>
-          <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${e.flowCr >= 0 ? 'bg-[#30d158]/15 text-[#30d158]' : 'bg-[#ff453a]/15 text-[#ff453a]'}">
-            ${e.flowCr >= 0 ? 'Rose +' : 'Fell '}₹${e.flowCr.toLocaleString('en-IN')} Cr
-          </span>
-        </button>
-      `).join('');
+        `).join('');
+      } else {
+        box.innerHTML = `<div class="card-elevated p-3 text-zinc-400">No separate fund-disclosure entries logged for ${todayStr} yet — only today's live intraday scan above is shown.</div>`;
+      }
+    }
+
+    async function loadTodayAnalysis() {
+      try {
+        const res = await fetch('/api/today-analysis');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderTodayAnalysis(data);
+      } catch (_) {}
     }
 
     function updateBondCalc() {
@@ -2296,6 +2321,7 @@
     document.getElementById('etfFlowFilter').addEventListener('change', renderEtfs);
     document.getElementById('etfCategoryFilter').addEventListener('change', renderEtfs);
     document.getElementById('heatmapCapFilter').addEventListener('change', renderHeatmap);
+    document.getElementById('refreshTodayBtn').addEventListener('click', loadTodayAnalysis);
     document.getElementById('scanIcebergBtn').addEventListener('click', async () => {
       const ticker = (document.getElementById('icebergTickerInput').value || 'ITC').trim().toUpperCase();
       const box = document.getElementById('icebergResults');
@@ -2868,6 +2894,7 @@
     window.addEventListener('DOMContentLoaded', () => {
       renderAll();
       syncFromServer(true);
+      loadTodayAnalysis();
       loadAllNseEquities('', true);
       loadAllIndiaFunds('', true);
     });
