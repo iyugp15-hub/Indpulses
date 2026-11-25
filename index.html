@@ -119,8 +119,8 @@
       <div class="hidden items-center gap-4 text-xs tabular-nums md:flex">
         <div class="flex items-center gap-2 rounded-full bg-zinc-900/90 border border-zinc-800 px-3 py-1.5">
           <span class="text-zinc-400">NIFTY 50</span>
-          <span class="font-semibold text-white">25,349.65</span>
-          <span class="text-[#ff453a] font-medium">-1.75%</span>
+          <span id="niftyPrice" class="font-semibold text-white">25,349.65</span>
+          <span id="niftyChange" class="text-[#ff453a] font-medium">-1.75%</span>
         </div>
         <div class="flex items-center gap-2 rounded-full bg-zinc-900/90 border border-zinc-800 px-3 py-1.5">
           <span class="text-zinc-400">IN 10Y G-SEC</span>
@@ -150,6 +150,8 @@
         <button type="button" data-tab="funds" class="pill-tab rounded-full px-3.5 py-1.5 text-xs font-medium whitespace-nowrap">Mutual Funds</button>
         <button type="button" data-tab="etfs" class="pill-tab rounded-full px-3.5 py-1.5 text-xs font-medium whitespace-nowrap">ETFs</button>
         <button type="button" data-tab="bonds" class="pill-tab rounded-full px-3.5 py-1.5 text-xs font-medium whitespace-nowrap">Bonds</button>
+        <button type="button" data-tab="heatmap" class="pill-tab rounded-full px-3.5 py-1.5 text-xs font-medium whitespace-nowrap">Heatmap &amp; Iceberg</button>
+        <button type="button" data-tab="today" class="pill-tab rounded-full px-3.5 py-1.5 text-xs font-medium whitespace-nowrap">Today's Analysis</button>
         <button type="button" data-tab="history" class="pill-tab rounded-full px-3.5 py-1.5 text-xs font-medium whitespace-nowrap">Historical Data</button>
       </div>
     </nav>
@@ -319,6 +321,8 @@
             <option value="Mid Cap">Mid Cap</option>
             <option value="Small Cap">Small Cap</option>
             <option value="Hybrid">Hybrid / Multi Asset</option>
+            <option value="Index">Index</option>
+            <option value="Debt">Debt / Liquid</option>
           </select>
         </div>
       </div>
@@ -350,6 +354,15 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <input id="etfSearch" type="text" placeholder="Search ETF ticker or name..." class="w-44 rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-[#0a84ff] focus:outline-none" />
+          <select id="etfCategoryFilter" class="rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white focus:border-[#0a84ff] focus:outline-none">
+            <option value="All">All ETF Categories</option>
+            <option value="Equity Index">Equity Index</option>
+            <option value="Banking Index">Banking Index</option>
+            <option value="Mid Cap Index">Mid Cap Index</option>
+            <option value="Next 50 Index">Next 50 Index</option>
+            <option value="Commodity (Gold)">Commodity (Gold)</option>
+            <option value="Debt / Liquid">Debt / Liquid</option>
+          </select>
           <select id="etfFlowFilter" class="rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white focus:border-[#0a84ff] focus:outline-none">
             <option value="All">All Flows</option>
             <option value="rose">Investment Rose</option>
@@ -424,6 +437,53 @@
             </div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- HEATMAP & ICEBERG TAB -->
+    <section id="tab-heatmap" class="tab-panel hidden space-y-4">
+      <div class="card-surface p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-base font-semibold text-white">Live Market Heatmap</h2>
+          <p class="text-xs text-zinc-400">Color-coded institutional flow &amp; live day change across tracked NSE equities (click any tile for A-to-Z details)</p>
+        </div>
+        <select id="heatmapCapFilter" class="rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white focus:border-[#0a84ff] focus:outline-none">
+          <option value="All">All Caps</option>
+          <option value="Large">Large Cap</option>
+          <option value="Mid">Mid Cap</option>
+          <option value="Small">Small Cap</option>
+        </select>
+      </div>
+      <div id="heatmapGrid" class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"></div>
+
+      <div class="card-surface p-4 sm:p-5 space-y-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-base font-semibold text-white">Institutional Iceberg &amp; Accumulation Scanner</h2>
+            <p class="text-xs text-zinc-400">Detects intraday 1m volume-burst clusters with tight price spreads (classic split-order accumulation footprint; tick-by-tick 20-lot prints require DhanHQ 20-Depth WebSocket)</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="icebergTickerInput" type="text" value="ITC" placeholder="e.g. ITC, HDFCBANK, BSE" class="w-40 rounded-xl bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-white uppercase placeholder-zinc-500 focus:border-[#0a84ff] focus:outline-none" />
+            <button type="button" id="scanIcebergBtn" class="rounded-xl bg-[#0a84ff] px-3.5 py-1.5 text-xs font-semibold text-white hover:opacity-90 transition">Scan Live Prints</button>
+          </div>
+        </div>
+        <div id="icebergResults" class="text-xs text-zinc-400">Enter an NSE ticker and tap Scan Live Prints to inspect intraday accumulation clusters.</div>
+      </div>
+    </section>
+
+    <!-- TODAY'S ANALYSIS TAB -->
+    <section id="tab-today" class="tab-panel hidden space-y-4">
+      <div class="card-surface p-4 sm:p-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-base font-semibold text-white">Today's Institutional Market Analysis</h2>
+          <p class="text-xs text-zinc-400">Present-day summary of institutional buying, selling, new fund entries, and ETF inflows/outflows</p>
+        </div>
+        <span id="todayDateBadge" class="rounded-full bg-zinc-900 border border-zinc-800 px-3 py-1 text-xs font-mono text-zinc-300">2026-11-25</span>
+      </div>
+      <div id="todaySummaryGrid" class="grid grid-cols-1 gap-3 md:grid-cols-2"></div>
+      <div class="card-surface p-4 sm:p-5 space-y-3">
+        <h3 class="text-sm font-semibold text-white">Today's ETF Investment Bias (Rose vs. Fell)</h3>
+        <div id="todayEtfBias" class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3"></div>
       </div>
     </section>
 
@@ -1655,6 +1715,7 @@
     function renderEtfs() {
       const query = document.getElementById('etfSearch').value.trim().toLowerCase();
       const flowFilter = document.getElementById('etfFlowFilter').value;
+      const catFilter = document.getElementById('etfCategoryFilter').value;
 
       const roseCount = state.etfs.filter(e => e.flowCr >= 0).length;
       const fellCount = state.etfs.filter(e => e.flowCr < 0).length;
@@ -1665,6 +1726,7 @@
       document.getElementById('kpiEtfNet').className = `mt-1.5 text-xl font-semibold tabular-nums ${netTotal >= 0 ? 'text-[#30d158]' : 'text-[#ff453a]'}`;
 
       const filtered = state.etfs
+        .filter(e => catFilter === 'All' || e.category === catFilter)
         .filter(e => flowFilter === 'All' || (flowFilter === 'rose' ? e.flowCr >= 0 : e.flowCr < 0))
         .filter(e => !query || e.ticker.toLowerCase().includes(query) || e.name.toLowerCase().includes(query));
 
@@ -1777,6 +1839,82 @@
       `).join('');
     }
 
+    function renderHeatmap() {
+      const cap = document.getElementById('heatmapCapFilter')?.value || 'All';
+      const grid = document.getElementById('heatmapGrid');
+      if (!grid) return;
+      const items = state.stocks
+        .filter(s => cap === 'All' || s.cap === cap)
+        .slice(0, 36);
+
+      grid.innerHTML = items.map(s => {
+        const chg = s.dayChangePct ?? 0;
+        const flow = getFlowValue(s);
+        const pos = chg > 0 || (chg === 0 && flow >= 0);
+        const bg = pos ? 'bg-[#30d158]/15 border-[#30d158]/30' : 'bg-[#ff453a]/15 border-[#ff453a]/30';
+        const txt = pos ? 'text-[#30d158]' : 'text-[#ff453a]';
+        return `
+          <button type="button" data-stock-id="${s.id}" class="stock-detail-trigger rounded-2xl border p-3 text-left transition hover:brightness-125 ${bg}">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-xs font-bold text-white truncate">${s.ticker}</span>
+              <span class="text-[11px] font-semibold tabular-nums ${txt}">${chg ? (chg >= 0 ? '+' : '') + chg + '%' : (flow >= 0 ? '+Buy' : '-Sell')}</span>
+            </div>
+            <div class="mt-1 text-xs font-semibold text-white tabular-nums">₹${(s.ltp || 0).toLocaleString('en-IN')}</div>
+            <div class="mt-0.5 text-[10px] text-zinc-400 truncate">${s.fundsHolding} funds · ${s.cap}</div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function renderTodayAnalysis() {
+      const grid = document.getElementById('todaySummaryGrid');
+      const etfBox = document.getElementById('todayEtfBias');
+      if (!grid || !etfBox) return;
+
+      const topBuys = [...state.stocks].filter(s => (s.netFlowCr || 0) > 0).sort((a, b) => b.netFlowCr - a.netFlowCr).slice(0, 5);
+      const topSells = [...state.stocks].filter(s => (s.netFlowCr || 0) < 0).sort((a, b) => a.netFlowCr - b.netFlowCr).slice(0, 5);
+      const newEntries = [...state.stocks].filter(s => (s.newEntrants || 0) > 0).sort((a, b) => b.newEntrants - a.newEntrants).slice(0, 5);
+      const topOverlap = [...state.stocks].sort((a, b) => b.fundsHolding - a.fundsHolding).slice(0, 5);
+
+      const renderMiniList = (title, accent, rows, valFn) => `
+        <div class="card-surface p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-white">${title}</h3>
+            <span class="text-[11px] font-semibold ${accent}">Today</span>
+          </div>
+          <div class="space-y-2">
+            ${rows.map(s => `
+              <button type="button" data-stock-id="${s.id}" class="stock-detail-trigger w-full card-elevated px-3 py-2 flex items-center justify-between text-left hover:border-zinc-600 transition">
+                <div>
+                  <div class="text-xs font-semibold text-white">${s.ticker}</div>
+                  <div class="text-[11px] text-zinc-400">${s.company} · ${s.sector}</div>
+                </div>
+                <div class="text-xs font-semibold tabular-nums ${accent}">${valFn(s)}</div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      grid.innerHTML =
+        renderMiniList('Top Institutional Buying', 'text-[#30d158]', topBuys, s => `+₹${s.netFlowCr.toLocaleString('en-IN')} Cr`) +
+        renderMiniList('Top Institutional Selling / Trimming', 'text-[#ff453a]', topSells, s => `₹${s.netFlowCr.toLocaleString('en-IN')} Cr`) +
+        renderMiniList('Institutions Entering (New Fund Additions)', 'text-[#ff9f0a]', newEntries, s => `+${s.newEntrants} new funds`) +
+        renderMiniList('Highest Institutional Consensus', 'text-[#0a84ff]', topOverlap, s => `${s.fundsHolding} funds`);
+
+      etfBox.innerHTML = state.etfs.map(e => `
+        <button type="button" data-etf-id="${e.id}" class="etf-detail-trigger card-elevated p-3 text-left hover:border-zinc-600 transition flex items-center justify-between">
+          <div>
+            <div class="text-xs font-semibold text-white">${e.ticker}</div>
+            <div class="text-[11px] text-zinc-400">₹${e.price.toLocaleString('en-IN')}</div>
+          </div>
+          <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${e.flowCr >= 0 ? 'bg-[#30d158]/15 text-[#30d158]' : 'bg-[#ff453a]/15 text-[#ff453a]'}">
+            ${e.flowCr >= 0 ? 'Rose +' : 'Fell '}₹${e.flowCr.toLocaleString('en-IN')} Cr
+          </span>
+        </button>
+      `).join('');
+    }
+
     function updateBondCalc() {
       const principal = Math.max(0, parseFloat(document.getElementById('calcPrincipal').value) || 0);
       const yieldPct = parseFloat(document.getElementById('calcYield').value) || 0;
@@ -1829,6 +1967,8 @@
       renderFunds();
       renderEtfs();
       renderBonds();
+      renderHeatmap();
+      renderTodayAnalysis();
       renderHistory();
       updateBondCalc();
       if (window.lucide) lucide.createIcons();
@@ -1887,6 +2027,7 @@
                 <div class="text-zinc-400 mb-1">Institutional Thesis / Disclosure Note</div>
                 <div class="text-white leading-relaxed">${s.note}</div>
               </div>
+              <div id="liveAzBox" class="card-elevated p-3 text-[11px] text-zinc-400">Loading A-to-Z live NSE metrics...</div>
               <div>
                 <div class="text-zinc-400 mb-1.5">All Tracked Holding Funds (${(s.holdingFunds || []).length})</div>
                 <div class="flex flex-wrap gap-1.5">
@@ -1895,6 +2036,26 @@
               </div>
             `
           );
+          fetch(`/api/stock/${encodeURIComponent(s.ticker)}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => {
+              const box = document.getElementById('liveAzBox');
+              if (!box || !d) return;
+              box.innerHTML = `
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 tabular-nums">
+                  <div><span class="text-zinc-500 block">Live LTP</span><strong class="text-white">₹${d.ltp.toLocaleString('en-IN')} (${d.dayChangePct >= 0 ? '+' : ''}${d.dayChangePct}%)</strong></div>
+                  <div><span class="text-zinc-500 block">Day High / Low</span><strong class="text-white">₹${d.dayHigh} / ₹${d.dayLow}</strong></div>
+                  <div><span class="text-zinc-500 block">52W High / Low</span><strong class="text-white">₹${d.week52High} / ₹${d.week52Low}</strong></div>
+                  <div><span class="text-zinc-500 block">Prev Close</span><strong class="text-white">₹${d.prevClose}</strong></div>
+                  <div><span class="text-zinc-500 block">Volume</span><strong class="text-white">${(d.volume || 0).toLocaleString('en-IN')}</strong></div>
+                  <div><span class="text-zinc-500 block">Exchange</span><strong class="text-white">${d.exchange}</strong></div>
+                </div>
+              `;
+            })
+            .catch(() => {
+              const box = document.getElementById('liveAzBox');
+              if (box) box.textContent = 'Live A-to-Z NSE metrics load automatically on your live Render URL.';
+            });
         }
         return;
       }
@@ -2110,6 +2271,42 @@
     document.getElementById('fundCategoryFilter').addEventListener('change', renderFunds);
     document.getElementById('etfSearch').addEventListener('input', renderEtfs);
     document.getElementById('etfFlowFilter').addEventListener('change', renderEtfs);
+    document.getElementById('etfCategoryFilter').addEventListener('change', renderEtfs);
+    document.getElementById('heatmapCapFilter').addEventListener('change', renderHeatmap);
+    document.getElementById('scanIcebergBtn').addEventListener('click', async () => {
+      const ticker = (document.getElementById('icebergTickerInput').value || 'ITC').trim().toUpperCase();
+      const box = document.getElementById('icebergResults');
+      box.textContent = `Scanning live 1-minute prints for ${ticker}...`;
+      try {
+        const res = await fetch(`/api/iceberg/${encodeURIComponent(ticker)}`);
+        if (!res.ok) throw new Error('Scan unavailable');
+        const data = await res.json();
+        if (!data.clusters || !data.clusters.length) {
+          box.innerHTML = `<div class="card-elevated p-3 text-zinc-300">${ticker} (LTP ₹${data.ltp}) — Avg 1m vol: ${data.avg1mVolume.toLocaleString('en-IN')}. No 2x+ volume-burst accumulation clusters detected in the last 60 minutes.</div>`;
+          return;
+        }
+        box.innerHTML = `
+          <div class="mb-2 text-white font-semibold">${ticker} · LTP ₹${data.ltp.toLocaleString('en-IN')} · Avg 1m Vol: ${data.avg1mVolume.toLocaleString('en-IN')}</div>
+          <div class="space-y-1.5">
+            ${data.clusters.map(c => `
+              <div class="card-elevated p-2.5 flex flex-wrap items-center justify-between gap-2 tabular-nums">
+                <div>
+                  <span class="font-semibold text-white">₹${c.price}</span>
+                  <span class="text-zinc-400 ml-2">${new Date(c.ts * 1000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span class="ml-2 rounded-full bg-[#ff9f0a]/15 px-2 py-0.5 text-[10px] text-[#ff9f0a]">${c.signal}</span>
+                </div>
+                <div class="text-right">
+                  <span class="font-semibold text-[#30d158]">${c.volRatio}x Vol</span>
+                  <span class="text-zinc-400 ml-2">(${c.volume.toLocaleString('en-IN')} qty · ${c.spreadPct}% spread)</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (e) {
+        box.textContent = 'Live 1m iceberg scan runs on your deployed Render URL.';
+      }
+    });
     document.getElementById('bondTypeFilter').addEventListener('change', renderBonds);
     document.getElementById('bondSearch').addEventListener('input', renderBonds);
     document.getElementById('historySearch').addEventListener('input', renderHistory);
@@ -2164,6 +2361,25 @@
 
     function applyLiveApiPayload(payload) {
       let updatedCount = 0;
+      if (payload && payload.nifty && payload.nifty.price) {
+        const np = document.getElementById('niftyPrice');
+        const nc = document.getElementById('niftyChange');
+        if (np) np.textContent = Number(payload.nifty.price).toLocaleString('en-IN');
+        if (nc) {
+          const chg = payload.nifty.chgPct || 0;
+          nc.textContent = `${chg >= 0 ? '+' : ''}${chg}%`;
+          nc.className = chg >= 0 ? 'text-[#30d158] font-medium' : 'text-[#ff453a] font-medium';
+        }
+        updatedCount++;
+      }
+      if (payload && payload.changes && typeof payload.changes === 'object') {
+        Object.entries(payload.changes).forEach(([ticker, chg]) => {
+          const st = state.stocks.find(s => s.ticker === ticker);
+          if (st) st.dayChangePct = chg;
+          const et = state.etfs.find(e => e.ticker === ticker);
+          if (et) et.dayChangePct = chg;
+        });
+      }
       if (payload && payload.quotes && typeof payload.quotes === 'object') {
         Object.entries(payload.quotes).forEach(([ticker, ltp]) => {
           const price = parseFloat(ltp);
